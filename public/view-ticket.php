@@ -221,11 +221,11 @@ $comments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 $commentUserName = $comment['user_name'];
 
                 if ($comment['user_role'] === 'ti') {
-                    $commentUserName .= ' TI';
+                    $commentUserName .= ' - [TI]';
                 }
 
                 if ($comment['user_role'] === 'admin') {
-                    $commentUserName .= ' ADMIN';
+                    $commentUserName .= '  [ADMIN]';
                 }
             ?>
 
