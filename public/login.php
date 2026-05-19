@@ -22,5 +22,9 @@
         <button type="submit">Entrar</button>
     </form>
 
+    <br>
+
+    <a href="register.php">Criar conta</a>
+
 </body>
 </html>
