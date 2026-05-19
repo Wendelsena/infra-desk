@@ -59,6 +59,7 @@ $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <th>Status</th>
                     <th>Aberto por</th>
                     <th>Data</th>
+                    <th>Ações</th>
                 </tr>
             </thead>
 
@@ -72,6 +73,9 @@ $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <td><?= htmlspecialchars($ticket['status']) ?></td>
                         <td><?= htmlspecialchars($ticket['user_name']) ?></td>
                         <td><?= htmlspecialchars($ticket['created_at']) ?></td>
+                        <td>
+                            <a href="view-ticket.php?id=<?= htmlspecialchars($ticket['id']) ?>">Ver</a>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
