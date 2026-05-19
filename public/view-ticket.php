@@ -78,23 +78,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 isset($_FILES['attachment']) &&
                 $_FILES['attachment']['error'] === UPLOAD_ERR_OK
             ) {
-                $allowedExtensions = [
-                    'jpg',
-                    'jpeg',
-                    'png',
-                    'pdf',
-                    'txt'
+                $allowedFiles = [
+                    'jpg' => 'image/jpeg',
+                    'jpeg' => 'image/jpeg',
+                    'png' => 'image/png',
+                    'pdf' => 'application/pdf',
+                    'txt' => 'text/plain'
                 ];
 
+                $maxFileSize = 5 * 1024 * 1024;
+
                 $originalName = $_FILES['attachment']['name'];
+                $fileSize = $_FILES['attachment']['size'];
 
                 $extension = strtolower(
                     pathinfo($originalName, PATHINFO_EXTENSION)
                 );
 
-                if (in_array($extension, $allowedExtensions)) {
+                $fileMimeType = mime_content_type($_FILES['attachment']['tmp_name']);
 
-                    $newFileName = uniqid() . '.' . $extension;
+                if (
+                    array_key_exists($extension, $allowedFiles) &&
+                    $allowedFiles[$extension] === $fileMimeType &&
+                    $fileSize <= $maxFileSize
+                ) {
+                    $newFileName = uniqid('', true) . '.' . $extension;
 
                     $uploadDir = __DIR__ . '/../storage/uploads/';
 
@@ -104,34 +112,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $uploadPath = $uploadDir . $newFileName;
 
-                    move_uploaded_file(
-                        $_FILES['attachment']['tmp_name'],
-                        $uploadPath
-                    );
+                    if (
+                        move_uploaded_file(
+                            $_FILES['attachment']['tmp_name'],
+                            $uploadPath
+                        )
+                    ) {
+                        $sql = "INSERT INTO attachments
+                                (
+                                    ticket_id,
+                                    user_id,
+                                    file_name,
+                                    original_name
+                                )
+                                VALUES
+                                (
+                                    :ticket_id,
+                                    :user_id,
+                                    :file_name,
+                                    :original_name
+                                )";
 
-                    $sql = "INSERT INTO attachments
-                            (
-                                ticket_id,
-                                user_id,
-                                file_name,
-                                original_name
-                            )
-                            VALUES
-                            (
-                                :ticket_id,
-                                :user_id,
-                                :file_name,
-                                :original_name
-                            )";
+                        $stmt = $pdo->prepare($sql);
 
-                    $stmt = $pdo->prepare($sql);
-
-                    $stmt->execute([
-                        ':ticket_id' => $ticketId,
-                        ':user_id' => $userId,
-                        ':file_name' => $newFileName,
-                        ':original_name' => $originalName
-                    ]);
+                        $stmt->execute([
+                            ':ticket_id' => $ticketId,
+                            ':user_id' => $userId,
+                            ':file_name' => $newFileName,
+                            ':original_name' => $originalName
+                        ]);
+                    }
                 }
             }
 
@@ -377,7 +387,17 @@ $formattedTicketDate = (new DateTime($ticket['created_at']))
 
             <label>Anexo:</label>
             <br>
-            <input type="file" name="attachment">
+            <input
+                type="file"
+                name="attachment"
+                accept=".jpg,.jpeg,.png,.pdf,.txt"
+            >
+
+            <br><br>
+
+            <small>
+                Formatos permitidos: JPG, PNG, PDF e TXT. Tamanho máximo: 5MB.
+            </small>
 
             <br><br>
 
