@@ -13,32 +13,77 @@ $user = $_SESSION['user'];
 
 $pdo = Connection::connect();
 
+$statusFilter = $_GET['status'] ?? '';
+
+$allowedStatus = [
+    'aberto',
+    'em andamento',
+    'finalizado'
+];
+
+if (!in_array($statusFilter, $allowedStatus)) {
+    $statusFilter = '';
+}
+
 if (in_array($user['role'], ['ti', 'admin'])) {
 
     $sql = "SELECT tickets.*, users.name AS user_name
             FROM tickets
-            INNER JOIN users ON users.id = tickets.user_id
-            ORDER BY tickets.created_at DESC";
+            INNER JOIN users ON users.id = tickets.user_id";
+
+    $params = [];
+
+    if (!empty($statusFilter)) {
+        $sql .= " WHERE tickets.status = :status";
+        $params[':status'] = $statusFilter;
+    }
+
+    $sql .= " ORDER BY tickets.created_at DESC";
 
     $stmt = $pdo->prepare($sql);
-    $stmt->execute();
+    $stmt->execute($params);
 
 } else {
 
     $sql = "SELECT tickets.*, users.name AS user_name
             FROM tickets
             INNER JOIN users ON users.id = tickets.user_id
-            WHERE tickets.user_id = :user_id
-            ORDER BY tickets.created_at DESC";
+            WHERE tickets.user_id = :user_id";
+
+    $params = [
+        ':user_id' => $user['id']
+    ];
+
+    if (!empty($statusFilter)) {
+        $sql .= " AND tickets.status = :status";
+        $params[':status'] = $statusFilter;
+    }
+
+    $sql .= " ORDER BY tickets.created_at DESC";
 
     $stmt = $pdo->prepare($sql);
-
-    $stmt->execute([
-        ':user_id' => $user['id']
-    ]);
+    $stmt->execute($params);
 }
 
 $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$openCount = 0;
+$progressCount = 0;
+$closedCount = 0;
+
+foreach ($tickets as $ticket) {
+    if ($ticket['status'] === 'aberto') {
+        $openCount++;
+    }
+
+    if ($ticket['status'] === 'em andamento') {
+        $progressCount++;
+    }
+
+    if ($ticket['status'] === 'finalizado') {
+        $closedCount++;
+    }
+}
 
 ?>
 
@@ -49,12 +94,12 @@ $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <title>Dashboard - InfraDesk</title>
 
     <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-    rel="stylesheet"
->
-
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
 </head>
-    <body class="bg-light">
+
+<body class="bg-light">
 
     <nav class="navbar navbar-dark bg-dark px-4">
         <span class="navbar-brand mb-0 h1">
@@ -84,6 +129,69 @@ $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         </div>
 
+        <div class="row mb-4">
+
+            <div class="col-md-4">
+                <div class="card border-warning shadow-sm">
+                    <div class="card-body">
+                        <h5 class="card-title">Abertos</h5>
+                        <h2><?= $openCount ?></h2>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card border-primary shadow-sm">
+                    <div class="card-body">
+                        <h5 class="card-title">Em andamento</h5>
+                        <h2><?= $progressCount ?></h2>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card border-success shadow-sm">
+                    <div class="card-body">
+                        <h5 class="card-title">Finalizados</h5>
+                        <h2><?= $closedCount ?></h2>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="mb-3">
+
+            <a
+                href="dashboard.php"
+                class="btn btn-sm <?= empty($statusFilter) ? 'btn-dark' : 'btn-outline-dark' ?>"
+            >
+                Todos
+            </a>
+
+            <a
+                href="dashboard.php?status=aberto"
+                class="btn btn-sm <?= $statusFilter === 'aberto' ? 'btn-warning' : 'btn-outline-warning' ?>"
+            >
+                Abertos
+            </a>
+
+            <a
+                href="dashboard.php?status=em%20andamento"
+                class="btn btn-sm <?= $statusFilter === 'em andamento' ? 'btn-primary' : 'btn-outline-primary' ?>"
+            >
+                Em andamento
+            </a>
+
+            <a
+                href="dashboard.php?status=finalizado"
+                class="btn btn-sm <?= $statusFilter === 'finalizado' ? 'btn-success' : 'btn-outline-success' ?>"
+            >
+                Finalizados
+            </a>
+
+        </div>
+
         <div class="card shadow-sm">
 
             <div class="card-body">
@@ -99,7 +207,6 @@ $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <table class="table table-hover align-middle">
 
                         <thead>
-
                             <tr>
                                 <th>ID</th>
                                 <th>Título</th>
@@ -110,7 +217,6 @@ $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <th>Data</th>
                                 <th></th>
                             </tr>
-
                         </thead>
 
                         <tbody>
@@ -147,6 +253,9 @@ $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                         $priorityClass = 'success';
                                     }
 
+                                    $formattedDate = (new DateTime($ticket['created_at']))
+                                        ->format('d/m/Y H:i');
+
                                 ?>
 
                                 <tr>
@@ -178,25 +287,18 @@ $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <td>
                                         <?= htmlspecialchars($ticket['user_name']) ?>
                                     </td>
+
                                     <td>
-
-                                        <?php
-                                            $formattedDate = (new DateTime($ticket['created_at']))
-                                                ->format('d/m/Y H:i');
-                                        ?>
-
-                                        <?= $formattedDate ?>
-
+                                        <?= htmlspecialchars($formattedDate) ?>
                                     </td>
-                                    <td>
 
+                                    <td>
                                         <a
-                                            href="view-ticket.php?id=<?= $ticket['id'] ?>"
+                                            href="view-ticket.php?id=<?= htmlspecialchars($ticket['id']) ?>"
                                             class="btn btn-sm btn-dark"
                                         >
                                             Ver
                                         </a>
-
                                     </td>
 
                                 </tr>
@@ -215,5 +317,5 @@ $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     </div>
 
-    </body>
+</body>
 </html>
