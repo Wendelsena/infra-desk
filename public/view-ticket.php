@@ -46,6 +46,7 @@ if (!$ticket) {
 }
 
 $isTicketOwner = ((int) $ticket['user_id'] === (int) $userId);
+$isTicketFinalized = $ticket['status'] === 'finalizado';
 
 if (!$isTicketOwner && !$canManageTicket) {
     header('Location: dashboard.php');
@@ -54,7 +55,7 @@ if (!$isTicketOwner && !$canManageTicket) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    if (isset($_POST['comment'])) {
+    if (isset($_POST['comment']) && !$isTicketFinalized) {
 
         $comment = trim($_POST['comment']);
 
@@ -107,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$sql = "SELECT comments.*, users.name AS user_name
+$sql = "SELECT comments.*, users.name AS user_name, users.role AS user_role
         FROM comments
         INNER JOIN users ON users.id = comments.user_id
         WHERE comments.ticket_id = :ticket_id
@@ -216,10 +217,22 @@ $comments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         <?php foreach ($comments as $comment): ?>
 
+            <?php
+                $commentUserName = $comment['user_name'];
+
+                if ($comment['user_role'] === 'ti') {
+                    $commentUserName .= ' TI';
+                }
+
+                if ($comment['user_role'] === 'admin') {
+                    $commentUserName .= ' ADMIN';
+                }
+            ?>
+
             <div style="border:1px solid #ccc; padding:10px; margin-bottom:10px;">
 
                 <strong>
-                    <?= htmlspecialchars($comment['user_name']) ?>
+                    <?= htmlspecialchars($commentUserName) ?>
                 </strong>
 
                 <small>
@@ -240,22 +253,30 @@ $comments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     <h2>Adicionar comentário</h2>
 
-    <form method="POST">
+    <?php if ($isTicketFinalized): ?>
 
-        <textarea
-            name="comment"
-            rows="4"
-            cols="50"
-            required
-        ></textarea>
+        <p>Este chamado foi finalizado. Não é possível enviar novos comentários.</p>
 
-        <br><br>
+    <?php else: ?>
 
-        <button type="submit">
-            Enviar comentário
-        </button>
+        <form method="POST">
 
-    </form>
+            <textarea
+                name="comment"
+                rows="4"
+                cols="50"
+                required
+            ></textarea>
+
+            <br><br>
+
+            <button type="submit">
+                Enviar comentário
+            </button>
+
+        </form>
+
+    <?php endif; ?>
 
     <br>
 
