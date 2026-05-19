@@ -13,13 +13,30 @@ $user = $_SESSION['user'];
 
 $pdo = Connection::connect();
 
-$sql = "SELECT tickets.*, users.name AS user_name
-        FROM tickets
-        INNER JOIN users ON users.id = tickets.user_id
-        ORDER BY tickets.created_at DESC";
+if (in_array($user['role'], ['ti', 'admin'])) {
 
-$stmt = $pdo->prepare($sql);
-$stmt->execute();
+    $sql = "SELECT tickets.*, users.name AS user_name
+            FROM tickets
+            INNER JOIN users ON users.id = tickets.user_id
+            ORDER BY tickets.created_at DESC";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute();
+
+} else {
+
+    $sql = "SELECT tickets.*, users.name AS user_name
+            FROM tickets
+            INNER JOIN users ON users.id = tickets.user_id
+            WHERE tickets.user_id = :user_id
+            ORDER BY tickets.created_at DESC";
+
+    $stmt = $pdo->prepare($sql);
+
+    $stmt->execute([
+        ':user_id' => $user['id']
+    ]);
+}
 
 $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
