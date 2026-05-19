@@ -22,6 +22,8 @@ $userRole = $_SESSION['user']['role'];
 
 $canManageTicket = in_array($userRole, ['ti', 'admin']);
 
+$errorMessage = "";
+
 if (!$ticketId) {
     header('Location: dashboard.php');
     exit;
@@ -60,6 +62,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $comment = trim($_POST['comment']);
 
         if (!empty($comment)) {
+
+            $hasUploadError = false;
 
             $sql = "INSERT INTO comments 
                     (ticket_id, user_id, comment)
@@ -141,12 +145,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ':file_name' => $newFileName,
                             ':original_name' => $originalName
                         ]);
+                    } else {
+                        $hasUploadError = true;
+                        $errorMessage = "Erro ao salvar o arquivo enviado.";
                     }
+
+                } else {
+                    $hasUploadError = true;
+                    $errorMessage = "Arquivo inválido. Envie JPG, PNG, PDF ou TXT com no máximo 5MB.";
                 }
             }
 
-            header("Location: view-ticket.php?id=" . $ticketId);
-            exit;
+            if (!$hasUploadError) {
+                header("Location: view-ticket.php?id=" . $ticketId);
+                exit;
+            }
         }
     }
 
@@ -218,6 +231,12 @@ $formattedTicketDate = (new DateTime($ticket['created_at']))
 <body>
 
     <h1>Chamado #<?= htmlspecialchars($ticket['id']) ?></h1>
+
+    <?php if (!empty($errorMessage)): ?>
+        <p style="color: red;">
+            <?= htmlspecialchars($errorMessage) ?>
+        </p>
+    <?php endif; ?>
 
     <p>
         <strong>Título:</strong>
