@@ -74,6 +74,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':comment' => $comment
             ]);
 
+            if (
+                isset($_FILES['attachment']) &&
+                $_FILES['attachment']['error'] === UPLOAD_ERR_OK
+            ) {
+                $allowedExtensions = [
+                    'jpg',
+                    'jpeg',
+                    'png',
+                    'pdf',
+                    'txt'
+                ];
+
+                $originalName = $_FILES['attachment']['name'];
+
+                $extension = strtolower(
+                    pathinfo($originalName, PATHINFO_EXTENSION)
+                );
+
+                if (in_array($extension, $allowedExtensions)) {
+
+                    $newFileName = uniqid() . '.' . $extension;
+
+                    $uploadDir = __DIR__ . '/../storage/uploads/';
+
+                    if (!is_dir($uploadDir)) {
+                        mkdir($uploadDir, 0777, true);
+                    }
+
+                    $uploadPath = $uploadDir . $newFileName;
+
+                    move_uploaded_file(
+                        $_FILES['attachment']['tmp_name'],
+                        $uploadPath
+                    );
+
+                    $sql = "INSERT INTO attachments
+                            (
+                                ticket_id,
+                                user_id,
+                                file_name,
+                                original_name
+                            )
+                            VALUES
+                            (
+                                :ticket_id,
+                                :user_id,
+                                :file_name,
+                                :original_name
+                            )";
+
+                    $stmt = $pdo->prepare($sql);
+
+                    $stmt->execute([
+                        ':ticket_id' => $ticketId,
+                        ':user_id' => $userId,
+                        ':file_name' => $newFileName,
+                        ':original_name' => $originalName
+                    ]);
+                }
+            }
+
             header("Location: view-ticket.php?id=" . $ticketId);
             exit;
         }
@@ -115,12 +176,26 @@ $sql = "SELECT comments.*, users.name AS user_name, users.role AS user_role
         ORDER BY comments.created_at ASC";
 
 $stmt = $pdo->prepare($sql);
-
 $stmt->execute([
     ':ticket_id' => $ticketId
 ]);
 
 $comments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$sql = "SELECT *
+        FROM attachments
+        WHERE ticket_id = :ticket_id
+        ORDER BY created_at DESC";
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute([
+    ':ticket_id' => $ticketId
+]);
+
+$attachments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$formattedTicketDate = (new DateTime($ticket['created_at']))
+    ->format('d/m/Y H:i');
 
 ?>
 
@@ -167,7 +242,7 @@ $comments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     <p>
         <strong>Data:</strong>
-        <?= htmlspecialchars($ticket['created_at']) ?>
+        <?= htmlspecialchars($formattedTicketDate) ?>
     </p>
 
     <?php if ($canManageTicket): ?>
@@ -207,6 +282,33 @@ $comments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     <hr>
 
+    <h2>Anexos</h2>
+
+    <?php if (empty($attachments)): ?>
+
+        <p>Nenhum anexo enviado.</p>
+
+    <?php else: ?>
+
+        <ul>
+            <?php foreach ($attachments as $attachment): ?>
+
+                <li>
+                    <a
+                        href="attachment.php?id=<?= htmlspecialchars($attachment['id']) ?>"
+                        target="_blank"
+                    >
+                        <?= htmlspecialchars($attachment['original_name']) ?>
+                    </a>
+                </li>
+
+            <?php endforeach; ?>
+        </ul>
+
+    <?php endif; ?>
+
+    <hr>
+
     <h2>Comentários</h2>
 
     <?php if (empty($comments)): ?>
@@ -225,8 +327,11 @@ $comments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 }
 
                 if ($comment['user_role'] === 'admin') {
-                    $commentUserName .= '  [ADMIN]';
+                    $commentUserName .= ' - [ADMIN]';
                 }
+
+                $formattedCommentDate = (new DateTime($comment['created_at']))
+                    ->format('d/m/Y H:i');
             ?>
 
             <div style="border:1px solid #ccc; padding:10px; margin-bottom:10px;">
@@ -236,7 +341,7 @@ $comments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 </strong>
 
                 <small>
-                    <?= htmlspecialchars($comment['created_at']) ?>
+                    <?= htmlspecialchars($formattedCommentDate) ?>
                 </small>
 
                 <p>
@@ -259,7 +364,7 @@ $comments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     <?php else: ?>
 
-        <form method="POST">
+        <form method="POST" enctype="multipart/form-data">
 
             <textarea
                 name="comment"
@@ -267,6 +372,12 @@ $comments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 cols="50"
                 required
             ></textarea>
+
+            <br><br>
+
+            <label>Anexo:</label>
+            <br>
+            <input type="file" name="attachment">
 
             <br><br>
 
