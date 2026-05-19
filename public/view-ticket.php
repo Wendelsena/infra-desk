@@ -176,16 +176,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (in_array($status, $allowedStatus)) {
 
-            $sql = "UPDATE tickets
-                    SET status = :status
-                    WHERE id = :id";
+            $oldStatus = $ticket['status'];
 
-            $stmt = $pdo->prepare($sql);
+            if ($oldStatus !== $status) {
 
-            $stmt->execute([
-                ':status' => $status,
-                ':id' => $ticketId
-            ]);
+                $sql = "UPDATE tickets
+                        SET status = :status
+                        WHERE id = :id";
+
+                $stmt = $pdo->prepare($sql);
+
+                $stmt->execute([
+                    ':status' => $status,
+                    ':id' => $ticketId
+                ]);
+
+                $sql = "INSERT INTO ticket_histories
+                        (
+                            ticket_id,
+                            user_id,
+                            old_status,
+                            new_status
+                        )
+                        VALUES
+                        (
+                            :ticket_id,
+                            :user_id,
+                            :old_status,
+                            :new_status
+                        )";
+
+                $stmt = $pdo->prepare($sql);
+
+                $stmt->execute([
+                    ':ticket_id' => $ticketId,
+                    ':user_id' => $userId,
+                    ':old_status' => $oldStatus,
+                    ':new_status' => $status
+                ]);
+            }
 
             header("Location: view-ticket.php?id=" . $ticketId);
             exit;
@@ -225,6 +254,19 @@ foreach ($attachments as $attachment) {
         $attachmentsByComment[$attachment['comment_id']][] = $attachment;
     }
 }
+
+$sql = "SELECT ticket_histories.*, users.name AS user_name, users.role AS user_role
+        FROM ticket_histories
+        INNER JOIN users ON users.id = ticket_histories.user_id
+        WHERE ticket_histories.ticket_id = :ticket_id
+        ORDER BY ticket_histories.created_at ASC";
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute([
+    ':ticket_id' => $ticketId
+]);
+
+$histories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $formattedTicketDate = (new DateTime($ticket['created_at']))
     ->format('d/m/Y H:i');
@@ -393,7 +435,6 @@ if ($ticket['priority'] === 'baixa') {
 
                     <?php
                         $commentUserName = $comment['user_name'];
-
                         $roleBadge = '';
 
                         if ($comment['user_role'] === 'ti') {
@@ -456,6 +497,49 @@ if ($ticket['priority'] === 'baixa') {
 
                         <?php endif; ?>
 
+                    </div>
+
+                <?php endforeach; ?>
+
+            <?php endif; ?>
+
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+
+            <h2 class="h5 mb-3">
+                Histórico
+            </h2>
+
+            <?php if (empty($histories)): ?>
+
+                <p class="text-muted mb-0">
+                    Nenhuma alteração registrada.
+                </p>
+
+            <?php else: ?>
+
+                <?php foreach ($histories as $history): ?>
+
+                    <?php
+                        $formattedHistoryDate = (new DateTime($history['created_at']))
+                            ->format('d/m/Y H:i');
+                    ?>
+
+                    <div class="border-start border-3 ps-3 mb-3">
+                        <p class="mb-1">
+                            <strong><?= htmlspecialchars($history['user_name']) ?></strong>
+                            alterou o status de
+                            <strong><?= htmlspecialchars($history['old_status']) ?></strong>
+                            para
+                            <strong><?= htmlspecialchars($history['new_status']) ?></strong>.
+                        </p>
+
+                        <small class="text-muted">
+                            <?= htmlspecialchars($formattedHistoryDate) ?>
+                        </small>
                     </div>
 
                 <?php endforeach; ?>
