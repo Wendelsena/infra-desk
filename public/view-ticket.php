@@ -271,6 +271,13 @@ $histories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $formattedTicketDate = (new DateTime($ticket['created_at']))
     ->format('d/m/Y H:i');
 
+$formattedDueDate = 'Sem prazo';
+
+if (!empty($ticket['due_at'])) {
+    $formattedDueDate = (new DateTime($ticket['due_at']))
+        ->format('d/m/Y H:i');
+}
+
 $statusClass = 'secondary';
 
 if ($ticket['status'] === 'aberto') {
@@ -367,9 +374,14 @@ if ($ticket['priority'] === 'baixa') {
                 <?= nl2br(htmlspecialchars($ticket['description'])) ?>
             </p>
 
-            <p class="mb-0">
+            <p class="mb-2">
                 <strong>Categoria:</strong>
                 <?= htmlspecialchars($ticket['category']) ?>
+            </p>
+
+            <p class="mb-0">
+                <strong>Vencimento:</strong>
+                <?= htmlspecialchars($formattedDueDate) ?>
             </p>
 
         </div>
@@ -526,11 +538,23 @@ if ($ticket['priority'] === 'baixa') {
                     <?php
                         $formattedHistoryDate = (new DateTime($history['created_at']))
                             ->format('d/m/Y H:i');
+
+                        $historyUserName = $history['user_name'];
+                        $historyRoleBadge = '';
+
+                        if ($history['user_role'] === 'ti') {
+                            $historyRoleBadge = '<span class="badge bg-info text-dark ms-1">TI</span>';
+                        }
+
+                        if ($history['user_role'] === 'admin') {
+                            $historyRoleBadge = '<span class="badge bg-primary ms-1">ADMIN</span>';
+                        }
                     ?>
 
                     <div class="border-start border-3 ps-3 mb-3">
                         <p class="mb-1">
-                            <strong><?= htmlspecialchars($history['user_name']) ?></strong>
+                            <strong><?= htmlspecialchars($historyUserName) ?></strong>
+                            <?= $historyRoleBadge ?>
                             alterou o status de
                             <strong><?= htmlspecialchars($history['old_status']) ?></strong>
                             para

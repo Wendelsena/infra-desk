@@ -14,6 +14,7 @@ $user = $_SESSION['user'];
 $pdo = Connection::connect();
 
 $statusFilter = $_GET['status'] ?? '';
+$slaFilter = $_GET['sla'] ?? '';
 
 $allowedStatus = [
     'aberto',
@@ -25,17 +26,31 @@ if (!in_array($statusFilter, $allowedStatus)) {
     $statusFilter = '';
 }
 
+if ($slaFilter !== 'atrasado') {
+    $slaFilter = '';
+}
+
 if (in_array($user['role'], ['ti', 'admin'])) {
 
     $sql = "SELECT tickets.*, users.name AS user_name
             FROM tickets
             INNER JOIN users ON users.id = tickets.user_id";
 
+    $conditions = [];
     $params = [];
 
     if (!empty($statusFilter)) {
-        $sql .= " WHERE tickets.status = :status";
+        $conditions[] = "tickets.status = :status";
         $params[':status'] = $statusFilter;
+    }
+
+    if ($slaFilter === 'atrasado') {
+        $conditions[] = "tickets.due_at < NOW()";
+        $conditions[] = "tickets.status != 'finalizado'";
+    }
+
+    if (!empty($conditions)) {
+        $sql .= " WHERE " . implode(' AND ', $conditions);
     }
 
     $sql .= " ORDER BY tickets.created_at DESC";
@@ -47,17 +62,27 @@ if (in_array($user['role'], ['ti', 'admin'])) {
 
     $sql = "SELECT tickets.*, users.name AS user_name
             FROM tickets
-            INNER JOIN users ON users.id = tickets.user_id
-            WHERE tickets.user_id = :user_id";
+            INNER JOIN users ON users.id = tickets.user_id";
+
+    $conditions = [
+        "tickets.user_id = :user_id"
+    ];
 
     $params = [
         ':user_id' => $user['id']
     ];
 
     if (!empty($statusFilter)) {
-        $sql .= " AND tickets.status = :status";
+        $conditions[] = "tickets.status = :status";
         $params[':status'] = $statusFilter;
     }
+
+    if ($slaFilter === 'atrasado') {
+        $conditions[] = "tickets.due_at < NOW()";
+        $conditions[] = "tickets.status != 'finalizado'";
+    }
+
+    $sql .= " WHERE " . implode(' AND ', $conditions);
 
     $sql .= " ORDER BY tickets.created_at DESC";
 
@@ -70,6 +95,7 @@ $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $openCount = 0;
 $progressCount = 0;
 $closedCount = 0;
+$lateCount = 0;
 
 foreach ($tickets as $ticket) {
     if ($ticket['status'] === 'aberto') {
@@ -82,6 +108,14 @@ foreach ($tickets as $ticket) {
 
     if ($ticket['status'] === 'finalizado') {
         $closedCount++;
+    }
+
+    if (
+        !empty($ticket['due_at']) &&
+        $ticket['status'] !== 'finalizado' &&
+        strtotime($ticket['due_at']) < time()
+    ) {
+        $lateCount++;
     }
 }
 
@@ -131,7 +165,7 @@ foreach ($tickets as $ticket) {
 
         <div class="row mb-4">
 
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card border-warning shadow-sm">
                     <div class="card-body">
                         <h5 class="card-title">Abertos</h5>
@@ -140,7 +174,7 @@ foreach ($tickets as $ticket) {
                 </div>
             </div>
 
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card border-primary shadow-sm">
                     <div class="card-body">
                         <h5 class="card-title">Em andamento</h5>
@@ -149,11 +183,20 @@ foreach ($tickets as $ticket) {
                 </div>
             </div>
 
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card border-success shadow-sm">
                     <div class="card-body">
                         <h5 class="card-title">Finalizados</h5>
                         <h2><?= $closedCount ?></h2>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card border-danger shadow-sm">
+                    <div class="card-body">
+                        <h5 class="card-title">Atrasados</h5>
+                        <h2><?= $lateCount ?></h2>
                     </div>
                 </div>
             </div>
@@ -164,7 +207,7 @@ foreach ($tickets as $ticket) {
 
             <a
                 href="dashboard.php"
-                class="btn btn-sm <?= empty($statusFilter) ? 'btn-dark' : 'btn-outline-dark' ?>"
+                class="btn btn-sm <?= empty($statusFilter) && empty($slaFilter) ? 'btn-dark' : 'btn-outline-dark' ?>"
             >
                 Todos
             </a>
@@ -188,6 +231,13 @@ foreach ($tickets as $ticket) {
                 class="btn btn-sm <?= $statusFilter === 'finalizado' ? 'btn-success' : 'btn-outline-success' ?>"
             >
                 Finalizados
+            </a>
+
+            <a
+                href="dashboard.php?sla=atrasado"
+                class="btn btn-sm <?= $slaFilter === 'atrasado' ? 'btn-danger' : 'btn-outline-danger' ?>"
+            >
+                Atrasados
             </a>
 
         </div>
@@ -215,6 +265,7 @@ foreach ($tickets as $ticket) {
                                 <th>Status</th>
                                 <th>Usuário</th>
                                 <th>Data</th>
+                                <th>Vencimento</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -256,6 +307,34 @@ foreach ($tickets as $ticket) {
                                     $formattedDate = (new DateTime($ticket['created_at']))
                                         ->format('d/m/Y H:i');
 
+                                    $slaText = 'Sem prazo';
+                                    $slaClass = 'secondary';
+
+                                    if (!empty($ticket['due_at'])) {
+
+                                        if ($ticket['status'] === 'finalizado') {
+                                            $slaText = 'Finalizado';
+                                            $slaClass = 'success';
+                                        } else {
+                                            $dueDate = new DateTime($ticket['due_at']);
+                                            $now = new DateTime();
+
+                                            $diffSeconds = $dueDate->getTimestamp() - $now->getTimestamp();
+                                            $hoursRemaining = floor($diffSeconds / 3600);
+
+                                            if ($diffSeconds <= 0) {
+                                                $slaText = 'Atrasado';
+                                                $slaClass = 'danger';
+                                            } elseif ($hoursRemaining <= 4) {
+                                                $slaText = 'Próximo do vencimento';
+                                                $slaClass = 'warning';
+                                            } else {
+                                                $slaText = 'No prazo';
+                                                $slaClass = 'success';
+                                            }
+                                        }
+                                    }
+
                                 ?>
 
                                 <tr>
@@ -290,6 +369,12 @@ foreach ($tickets as $ticket) {
 
                                     <td>
                                         <?= htmlspecialchars($formattedDate) ?>
+                                    </td>
+
+                                    <td>
+                                        <span class="badge bg-<?= $slaClass ?>">
+                                            <?= htmlspecialchars($slaText) ?>
+                                        </span>
                                     </td>
 
                                     <td>
