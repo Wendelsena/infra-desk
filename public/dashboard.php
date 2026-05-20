@@ -131,6 +131,22 @@ foreach ($tickets as $ticket) {
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
         rel="stylesheet"
     >
+
+    <style>
+        .sla-badge {
+            cursor: default;
+        }
+
+        .tooltip {
+            --bs-tooltip-bg: #212529;
+            --bs-tooltip-color: #fff;
+            --bs-tooltip-padding-x: 12px;
+            --bs-tooltip-padding-y: 8px;
+            --bs-tooltip-border-radius: 8px;
+            --bs-tooltip-font-size: 13px;
+            --bs-tooltip-opacity: 0.95;
+        }
+    </style>
 </head>
 
 <body class="bg-light">
@@ -265,7 +281,7 @@ foreach ($tickets as $ticket) {
                                 <th>Status</th>
                                 <th>Usuário</th>
                                 <th>Data</th>
-                                <th>Vencimento</th>
+                                <th>SLA</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -306,6 +322,13 @@ foreach ($tickets as $ticket) {
 
                                     $formattedDate = (new DateTime($ticket['created_at']))
                                         ->format('d/m/Y H:i');
+
+                                    $formattedDueDate = 'Sem prazo';
+
+                                    if (!empty($ticket['due_at'])) {
+                                        $formattedDueDate = (new DateTime($ticket['due_at']))
+                                            ->format('d/m/Y H:i');
+                                    }
 
                                     $slaText = 'Sem prazo';
                                     $slaClass = 'secondary';
@@ -372,7 +395,12 @@ foreach ($tickets as $ticket) {
                                     </td>
 
                                     <td>
-                                        <span class="badge bg-<?= $slaClass ?>">
+                                        <span
+                                            class="badge bg-<?= $slaClass ?> sla-badge"
+                                            data-bs-toggle="tooltip"
+                                            data-bs-placement="top"
+                                            data-bs-title="Vencimento: <?= htmlspecialchars($formattedDueDate) ?>"
+                                        >
                                             <?= htmlspecialchars($slaText) ?>
                                         </span>
                                     </td>
@@ -401,6 +429,24 @@ foreach ($tickets as $ticket) {
         </div>
 
     </div>
+
+    <script
+        src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js">
+    </script>
+
+    <script>
+        const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+
+        tooltipTriggerList.forEach(function (tooltipTriggerElement) {
+            new bootstrap.Tooltip(tooltipTriggerElement, {
+                trigger: 'hover',
+                delay: {
+                    show: 120,
+                    hide: 80
+                }
+            });
+        });
+    </script>
 
 </body>
 </html>
