@@ -15,6 +15,7 @@ $pdo = Connection::connect();
 
 $statusFilter = $_GET['status'] ?? '';
 $slaFilter = $_GET['sla'] ?? '';
+$search = trim($_GET['search'] ?? '');
 
 $allowedStatus = [
     'aberto',
@@ -39,25 +40,6 @@ if (in_array($user['role'], ['ti', 'admin'])) {
     $conditions = [];
     $params = [];
 
-    if (!empty($statusFilter)) {
-        $conditions[] = "tickets.status = :status";
-        $params[':status'] = $statusFilter;
-    }
-
-    if ($slaFilter === 'atrasado') {
-        $conditions[] = "tickets.due_at < NOW()";
-        $conditions[] = "tickets.status != 'finalizado'";
-    }
-
-    if (!empty($conditions)) {
-        $sql .= " WHERE " . implode(' AND ', $conditions);
-    }
-
-    $sql .= " ORDER BY tickets.created_at DESC";
-
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-
 } else {
 
     $sql = "SELECT tickets.*, users.name AS user_name
@@ -71,24 +53,37 @@ if (in_array($user['role'], ['ti', 'admin'])) {
     $params = [
         ':user_id' => $user['id']
     ];
-
-    if (!empty($statusFilter)) {
-        $conditions[] = "tickets.status = :status";
-        $params[':status'] = $statusFilter;
-    }
-
-    if ($slaFilter === 'atrasado') {
-        $conditions[] = "tickets.due_at < NOW()";
-        $conditions[] = "tickets.status != 'finalizado'";
-    }
-
-    $sql .= " WHERE " . implode(' AND ', $conditions);
-
-    $sql .= " ORDER BY tickets.created_at DESC";
-
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
 }
+
+if (!empty($statusFilter)) {
+    $conditions[] = "tickets.status = :status";
+    $params[':status'] = $statusFilter;
+}
+
+if ($slaFilter === 'atrasado') {
+    $conditions[] = "tickets.due_at < NOW()";
+    $conditions[] = "tickets.status != 'finalizado'";
+}
+
+if (!empty($search)) {
+    $conditions[] = "(
+        tickets.title ILIKE :search
+        OR tickets.description ILIKE :search
+        OR tickets.category ILIKE :search
+        OR users.name ILIKE :search
+    )";
+
+    $params[':search'] = '%' . $search . '%';
+}
+
+if (!empty($conditions)) {
+    $sql .= " WHERE " . implode(' AND ', $conditions);
+}
+
+$sql .= " ORDER BY tickets.created_at DESC";
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
 
 $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -117,6 +112,12 @@ foreach ($tickets as $ticket) {
     ) {
         $lateCount++;
     }
+}
+
+$queryBase = '';
+
+if (!empty($search)) {
+    $queryBase = 'search=' . urlencode($search);
 }
 
 ?>
@@ -219,38 +220,84 @@ foreach ($tickets as $ticket) {
 
         </div>
 
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+
+               <form method="GET" class="row g-3 align-items-center">
+
+                    <div class="col-md-9">
+                        <input
+                            type="text"
+                            name="search"
+                            class="form-control"
+                            placeholder="Pesquisar por título, descrição, categoria ou usuário..."
+                            value="<?= htmlspecialchars($search) ?>"
+                        >
+                    </div>
+
+                    <?php if (!empty($statusFilter)): ?>
+                        <input
+                            type="hidden"
+                            name="status"
+                            value="<?= htmlspecialchars($statusFilter) ?>"
+                        >
+                    <?php endif; ?>
+
+                    <?php if (!empty($slaFilter)): ?>
+                        <input
+                            type="hidden"
+                            name="sla"
+                            value="<?= htmlspecialchars($slaFilter) ?>"
+                        >
+                    <?php endif; ?>
+
+                    <div class="col-md-3 d-flex gap-2 justify-content-end">
+                        <button type="submit" class="btn btn-dark">
+                            Pesquisar
+                        </button>
+
+                        <a href="dashboard.php" class="btn btn-outline-secondary">
+                            Limpar
+                        </a>
+                    </div>
+
+                </form>
+
+            </div>
+        </div>
+
         <div class="mb-3">
 
             <a
-                href="dashboard.php"
+                href="dashboard.php<?= !empty($queryBase) ? '?' . $queryBase : '' ?>"
                 class="btn btn-sm <?= empty($statusFilter) && empty($slaFilter) ? 'btn-dark' : 'btn-outline-dark' ?>"
             >
                 Todos
             </a>
 
             <a
-                href="dashboard.php?status=aberto"
+                href="dashboard.php?<?= !empty($queryBase) ? $queryBase . '&' : '' ?>status=aberto"
                 class="btn btn-sm <?= $statusFilter === 'aberto' ? 'btn-warning' : 'btn-outline-warning' ?>"
             >
                 Abertos
             </a>
 
             <a
-                href="dashboard.php?status=em%20andamento"
+                href="dashboard.php?<?= !empty($queryBase) ? $queryBase . '&' : '' ?>status=em%20andamento"
                 class="btn btn-sm <?= $statusFilter === 'em andamento' ? 'btn-primary' : 'btn-outline-primary' ?>"
             >
                 Em andamento
             </a>
 
             <a
-                href="dashboard.php?status=finalizado"
+                href="dashboard.php?<?= !empty($queryBase) ? $queryBase . '&' : '' ?>status=finalizado"
                 class="btn btn-sm <?= $statusFilter === 'finalizado' ? 'btn-success' : 'btn-outline-success' ?>"
             >
                 Finalizados
             </a>
 
             <a
-                href="dashboard.php?sla=atrasado"
+                href="dashboard.php?<?= !empty($queryBase) ? $queryBase . '&' : '' ?>sla=atrasado"
                 class="btn btn-sm <?= $slaFilter === 'atrasado' ? 'btn-danger' : 'btn-outline-danger' ?>"
             >
                 Atrasados
@@ -281,7 +328,7 @@ foreach ($tickets as $ticket) {
                                 <th>Status</th>
                                 <th>Usuário</th>
                                 <th>Data</th>
-                                <th>SLA</th>
+                                <th>Vencimento</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -399,7 +446,7 @@ foreach ($tickets as $ticket) {
                                             class="badge bg-<?= $slaClass ?> sla-badge"
                                             data-bs-toggle="tooltip"
                                             data-bs-placement="top"
-                                            data-bs-title="Vencimento: <?= htmlspecialchars($formattedDueDate) ?>"
+                                            data-bs-title="<?= htmlspecialchars($formattedDueDate) ?>"
                                         >
                                             <?= htmlspecialchars($slaText) ?>
                                         </span>
