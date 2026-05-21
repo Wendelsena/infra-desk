@@ -18,9 +18,13 @@ $pdo = Connection::connect();
 
 $ticketId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 $userId = $_SESSION['user']['id'];
+$userName = $_SESSION['user']['name'];
 $userRole = $_SESSION['user']['role'];
 
+$isAdmin = $userRole === 'admin';
+$isTi = $userRole === 'ti';
 $canManageTicket = in_array($userRole, ['ti', 'admin']);
+
 $errorMessage = "";
 
 if (!$ticketId) {
@@ -28,9 +32,14 @@ if (!$ticketId) {
     exit;
 }
 
-$sql = "SELECT tickets.*, users.name AS user_name
+$sql = "SELECT 
+            tickets.*, 
+            users.name AS user_name,
+            assigned_user.name AS assigned_name,
+            assigned_user.role AS assigned_role
         FROM tickets
         INNER JOIN users ON users.id = tickets.user_id
+        LEFT JOIN users AS assigned_user ON assigned_user.id = tickets.assigned_to
         WHERE tickets.id = :id
         LIMIT 1";
 
@@ -49,6 +58,28 @@ if (!$ticket) {
 $isTicketOwner = ((int) $ticket['user_id'] === (int) $userId);
 $isTicketFinalized = $ticket['status'] === 'finalizado';
 
+$isAssignedToCurrentUser =
+    !empty($ticket['assigned_to']) &&
+    (int) $ticket['assigned_to'] === (int) $userId;
+
+$canAcceptTicket =
+    $isTi &&
+    !$isAssignedToCurrentUser &&
+    empty($ticket['assigned_to']) &&
+    !$isTicketFinalized;
+
+$canInteractWithTicket =
+    !empty($ticket['assigned_to']) &&
+    (
+        $isAdmin ||
+        $isTicketOwner ||
+        ($isTi && $isAssignedToCurrentUser)
+    );
+
+$canChangeStatus =
+    $isAdmin ||
+    ($isTi && $isAssignedToCurrentUser);
+
 if (!$isTicketOwner && !$canManageTicket) {
     header('Location: dashboard.php');
     exit;
@@ -56,7 +87,147 @@ if (!$isTicketOwner && !$canManageTicket) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    if (isset($_POST['comment']) && !$isTicketFinalized) {
+    if (isset($_POST['accept_ticket']) && $canAcceptTicket) {
+
+        $sql = "UPDATE tickets
+                SET assigned_to = :assigned_to
+                WHERE id = :id
+                AND assigned_to IS NULL";
+
+        $stmt = $pdo->prepare($sql);
+
+        $stmt->execute([
+            ':assigned_to' => $userId,
+            ':id' => $ticketId
+        ]);
+
+        if ($stmt->rowCount() > 0) {
+            $sql = "INSERT INTO ticket_histories
+                    (
+                        ticket_id,
+                        user_id,
+                        action,
+                        description
+                    )
+                    VALUES
+                    (
+                        :ticket_id,
+                        :user_id,
+                        :action,
+                        :description
+                    )";
+
+            $stmt = $pdo->prepare($sql);
+
+            $stmt->execute([
+                ':ticket_id' => $ticketId,
+                ':user_id' => $userId,
+                ':action' => 'assignment_change',
+                ':description' => 'aceitou este chamado.'
+            ]);
+        }
+
+        header("Location: view-ticket.php?id=" . $ticketId);
+        exit;
+    }
+
+    if (isset($_POST['assigned_to']) && $isAdmin) {
+
+        $assignedTo = $_POST['assigned_to'];
+
+        $oldAssignedName = 'Sem responsável';
+        $oldAssignedRole = '';
+
+        if (!empty($ticket['assigned_to'])) {
+            $oldAssignedName = $ticket['assigned_name'];
+            $oldAssignedRole = strtoupper($ticket['assigned_role']);
+        }
+
+        $newAssignedName = 'Sem responsável';
+        $newAssignedRole = '';
+
+        if ($assignedTo === '') {
+            $assignedTo = null;
+        }
+
+        if ($assignedTo !== null) {
+            $sql = "SELECT id, name, role
+                    FROM users
+                    WHERE id = :id
+                    AND role IN ('ti', 'admin')
+                    LIMIT 1";
+
+            $stmt = $pdo->prepare($sql);
+
+            $stmt->execute([
+                ':id' => $assignedTo
+            ]);
+
+            $assignedUserExists = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$assignedUserExists) {
+                header("Location: view-ticket.php?id=" . $ticketId);
+                exit;
+            }
+
+            $newAssignedName = $assignedUserExists['name'];
+            $newAssignedRole = strtoupper($assignedUserExists['role']);
+        }
+
+        if ((string) $ticket['assigned_to'] !== (string) $assignedTo) {
+
+            $sql = "UPDATE tickets
+                    SET assigned_to = :assigned_to
+                    WHERE id = :id";
+
+            $stmt = $pdo->prepare($sql);
+
+            $stmt->execute([
+                ':assigned_to' => $assignedTo,
+                ':id' => $ticketId
+            ]);
+
+            $sql = "INSERT INTO ticket_histories
+                    (
+                        ticket_id,
+                        user_id,
+                        action,
+                        description
+                    )
+                    VALUES
+                    (
+                        :ticket_id,
+                        :user_id,
+                        :action,
+                        :description
+                    )";
+
+            $stmt = $pdo->prepare($sql);
+
+            $stmt->execute([
+                ':ticket_id' => $ticketId,
+                ':user_id' => $userId,
+                ':action' => 'assignment_change',
+                ':description' =>
+                    'alterou o responsável de ' .
+                    $oldAssignedName .
+                    (!empty($oldAssignedRole) ? ' ' . $oldAssignedRole : '') .
+                    ' para ' .
+                    $newAssignedName .
+                    (!empty($newAssignedRole) ? ' ' . $newAssignedRole : '') .
+                    '.'
+            ]);
+        }
+
+        header("Location: view-ticket.php?id=" . $ticketId);
+        exit;
+    }
+
+    if (
+        isset($_POST['comment']) &&
+        !$isTicketFinalized &&
+        $canInteractWithTicket
+    ) {
 
         $comment = trim($_POST['comment']);
 
@@ -164,7 +335,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if (isset($_POST['status']) && $canManageTicket) {
+    if (
+        isset($_POST['status']) &&
+        $canChangeStatus
+    ) {
 
         $status = trim($_POST['status']);
 
@@ -196,14 +370,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ticket_id,
                             user_id,
                             old_status,
-                            new_status
+                            new_status,
+                            action
                         )
                         VALUES
                         (
                             :ticket_id,
                             :user_id,
                             :old_status,
-                            :new_status
+                            :new_status,
+                            :action
                         )";
 
                 $stmt = $pdo->prepare($sql);
@@ -212,7 +388,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':ticket_id' => $ticketId,
                     ':user_id' => $userId,
                     ':old_status' => $oldStatus,
-                    ':new_status' => $status
+                    ':new_status' => $status,
+                    ':action' => 'status_change'
                 ]);
             }
 
@@ -267,6 +444,16 @@ $stmt->execute([
 ]);
 
 $histories = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$sql = "SELECT id, name, role
+        FROM users
+        WHERE role IN ('ti', 'admin')
+        ORDER BY name ASC";
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute();
+
+$technicians = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $formattedTicketDate = (new DateTime($ticket['created_at']))
     ->format('d/m/Y H:i');
@@ -379,15 +566,118 @@ if ($ticket['priority'] === 'baixa') {
                 <?= htmlspecialchars($ticket['category']) ?>
             </p>
 
-            <p class="mb-0">
+            <p class="mb-2">
                 <strong>Vencimento:</strong>
                 <?= htmlspecialchars($formattedDueDate) ?>
+            </p>
+
+            <p class="mb-0">
+                <strong>Responsável:</strong>
+
+                <?php if (!empty($ticket['assigned_name'])): ?>
+
+                    <?= htmlspecialchars($ticket['assigned_name']) ?>
+
+                    <?php if ($ticket['assigned_role'] === 'ti'): ?>
+                        <span class="badge bg-info text-dark">TI</span>
+                    <?php endif; ?>
+
+                    <?php if ($ticket['assigned_role'] === 'admin'): ?>
+                        <span class="badge bg-primary">ADMIN</span>
+                    <?php endif; ?>
+
+                <?php else: ?>
+
+                    <span class="text-muted">Sem responsável</span>
+
+                <?php endif; ?>
             </p>
 
         </div>
     </div>
 
-    <?php if ($canManageTicket): ?>
+    <?php if ($isTi): ?>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+
+                <h2 class="h5 mb-3">
+                    Atendimento
+                </h2>
+
+                <?php if ($isAssignedToCurrentUser): ?>
+
+                    <div class="alert alert-success mb-0">
+                        Você é o responsável por este chamado.
+                    </div>
+
+                <?php elseif ($canAcceptTicket): ?>
+
+                    <button
+                        type="button"
+                        class="btn btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#acceptModal"
+                    >
+                        Aceitar chamado
+                    </button>
+
+                <?php else: ?>
+
+                    <div class="alert alert-secondary mb-0">
+                        Este chamado já foi assumido por outro atendente.
+                    </div>
+
+                <?php endif; ?>
+
+            </div>
+        </div>
+
+    <?php endif; ?>
+
+    <?php if ($isAdmin): ?>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+
+                <h2 class="h5 mb-3">
+                    Responsável pelo chamado
+                </h2>
+
+                <form method="POST" class="d-flex gap-2">
+
+                    <select name="assigned_to" class="form-select w-auto">
+
+                        <option value="">
+                            Sem responsável
+                        </option>
+
+                        <?php foreach ($technicians as $technician): ?>
+
+                            <option
+                                value="<?= htmlspecialchars($technician['id']) ?>"
+                                <?= (int) $ticket['assigned_to'] === (int) $technician['id'] ? 'selected' : '' ?>
+                            >
+                                <?= htmlspecialchars($technician['name']) ?>
+                                <?= $technician['role'] === 'ti' ? ' - TI' : ' - ADMIN' ?>
+                            </option>
+
+                        <?php endforeach; ?>
+
+                    </select>
+
+                    <button type="submit" class="btn btn-dark">
+                        Atualizar responsável
+                    </button>
+
+                </form>
+
+            </div>
+        </div>
+
+    <?php endif; ?>
+
+    <?php if ($canChangeStatus): ?>
 
         <div class="card shadow-sm mb-4">
             <div class="card-body">
@@ -553,12 +843,42 @@ if ($ticket['priority'] === 'baixa') {
 
                     <div class="border-start border-3 ps-3 mb-3">
                         <p class="mb-1">
-                            <strong><?= htmlspecialchars($historyUserName) ?></strong>
+
+                            <strong>
+                                <?= htmlspecialchars($historyUserName) ?>
+                            </strong>
+
                             <?= $historyRoleBadge ?>
-                            alterou o status de
-                            <strong><?= htmlspecialchars($history['old_status']) ?></strong>
-                            para
-                            <strong><?= htmlspecialchars($history['new_status']) ?></strong>.
+
+                            <?php if (($history['action'] ?? 'status_change') === 'assignment_change'): ?>
+
+                                <?php
+                                    $description = htmlspecialchars($history['description']);
+
+                                    $description = str_replace(
+                                        ' TI',
+                                        ' <span class="badge bg-info text-dark">TI</span>',
+                                        $description
+                                    );
+
+                                    $description = str_replace(
+                                        ' ADMIN',
+                                        ' <span class="badge bg-primary">ADMIN</span>',
+                                        $description
+                                    );
+                                ?>
+
+                                <?= $description ?>
+
+                            <?php else: ?>
+
+                                alterou o status de
+                                <strong><?= htmlspecialchars($history['old_status']) ?></strong>
+                                para
+                                <strong><?= htmlspecialchars($history['new_status']) ?></strong>.
+
+                            <?php endif; ?>
+
                         </p>
 
                         <small class="text-muted">
@@ -584,6 +904,13 @@ if ($ticket['priority'] === 'baixa') {
 
                 <div class="alert alert-secondary mb-0">
                     Este chamado foi finalizado. Não é possível enviar novos comentários.
+                </div>
+
+            <?php elseif (!$canInteractWithTicket): ?>
+
+                <div class="alert alert-warning mb-0">
+                    Este chamado precisa ser aceito por um atendente antes
+                    de permitir comentários e alterações.
                 </div>
 
             <?php else: ?>
@@ -629,6 +956,70 @@ if ($ticket['priority'] === 'baixa') {
     </div>
 
 </div>
+
+<form method="POST">
+
+    <div
+        class="modal fade"
+        id="acceptModal"
+        tabindex="-1"
+        aria-hidden="true"
+    >
+        <div class="modal-dialog modal-dialog-centered">
+
+            <div class="modal-content border-0 shadow">
+
+                <div class="modal-body text-center p-4">
+
+                    <div
+                        class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center mx-auto mb-4"
+                        style="width: 70px; height: 70px; font-size: 32px;"
+                    >
+                        !
+                    </div>
+
+                    <h4 class="mb-3">
+                        Confirmar atendimento
+                    </h4>
+
+                    <p class="text-muted mb-4">
+                        Tem certeza que deseja aceitar este chamado?
+                        <br><br>
+                        Depois, para remover seu nome como responsável,
+                        será necessário entrar em contato com um administrador.
+                    </p>
+
+                    <div class="d-flex justify-content-center gap-2">
+
+                        <button
+                            type="button"
+                            class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal"
+                        >
+                            Cancelar
+                        </button>
+
+                        <button
+                            type="submit"
+                            name="accept_ticket"
+                            value="1"
+                            class="btn btn-primary"
+                        >
+                            Aceitar chamado
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+</form>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 </body>
 </html>

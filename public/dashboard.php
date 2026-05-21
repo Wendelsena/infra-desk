@@ -225,43 +225,43 @@ if (!empty($search)) {
 
                <form method="GET" class="row g-3 align-items-center">
 
-                    <div class="col-md-9">
-                        <input
-                            type="text"
-                            name="search"
-                            class="form-control"
-                            placeholder="Pesquisar por título, descrição, categoria ou usuário..."
-                            value="<?= htmlspecialchars($search) ?>"
-                        >
-                    </div>
+                <div class="col-md-9">
+                    <input
+                        type="text"
+                        name="search"
+                        class="form-control"
+                        placeholder="Pesquisar por título, descrição, categoria ou usuário..."
+                        value="<?= htmlspecialchars($search) ?>"
+                    >
+                </div>
 
-                    <?php if (!empty($statusFilter)): ?>
-                        <input
-                            type="hidden"
-                            name="status"
-                            value="<?= htmlspecialchars($statusFilter) ?>"
-                        >
-                    <?php endif; ?>
+                <?php if (!empty($statusFilter)): ?>
+                    <input
+                        type="hidden"
+                        name="status"
+                        value="<?= htmlspecialchars($statusFilter) ?>"
+                    >
+                <?php endif; ?>
 
-                    <?php if (!empty($slaFilter)): ?>
-                        <input
-                            type="hidden"
-                            name="sla"
-                            value="<?= htmlspecialchars($slaFilter) ?>"
-                        >
-                    <?php endif; ?>
+                <?php if (!empty($slaFilter)): ?>
+                    <input
+                        type="hidden"
+                        name="sla"
+                        value="<?= htmlspecialchars($slaFilter) ?>"
+                    >
+                <?php endif; ?>
 
-                    <div class="col-md-3 d-flex gap-2 justify-content-end">
-                        <button type="submit" class="btn btn-dark">
-                            Pesquisar
-                        </button>
+                <div class="col-md-3 d-flex gap-2 justify-content-end">
+                    <button type="submit" class="btn btn-dark">
+                        Pesquisar
+                    </button>
 
-                        <a href="dashboard.php" class="btn btn-outline-secondary">
-                            Limpar
-                        </a>
-                    </div>
+                    <a href="dashboard.php" class="btn btn-outline-secondary">
+                        Limpar
+                    </a>
+                </div>
 
-                </form>
+            </form>
 
             </div>
         </div>
