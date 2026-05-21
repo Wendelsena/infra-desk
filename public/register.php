@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../config/Connection.php';
 
 $message = "";
+$messageType = "";
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim($_POST['name']);
@@ -11,6 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($name) || empty($email) || empty($password)) {
         $message = "Preencha todos os campos.";
+        $messageType = "danger";
     } else {
         $pdo = Connection::connect();
 
@@ -30,13 +32,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             $message = "Usuário cadastrado com sucesso!";
+            $messageType = "success";
 
         } catch (PDOException $e) {
             if ($e->getCode() == 23505) {
                 $message = "Este email já está cadastrado.";
             } else {
-                $message = "Erro ao cadastrar usuário: " . $e->getMessage();
+                $message = "Erro ao cadastrar usuário.";
             }
+
+            $messageType = "danger";
         }
     }
 }
@@ -48,37 +53,100 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <title>Cadastro - InfraDesk</title>
+
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
 </head>
-<body>
 
-    <h1>Cadastrar usuário</h1>
+<body class="bg-light">
 
-    <?php if (!empty($message)): ?>
-        <p><?= htmlspecialchars($message) ?></p>
-    <?php endif; ?>
+<div class="container min-vh-100 d-flex align-items-center justify-content-center">
 
-    <form method="POST">
-        <label>Nome:</label>
-        <br>
-        <input type="text" name="name" required>
-        <br><br>
+    <div class="card shadow-sm border-0" style="max-width: 460px; width: 100%;">
+        <div class="card-body p-4">
 
-        <label>Email:</label>
-        <br>
-        <input type="email" name="email" required>
-        <br><br>
+            <div class="text-center mb-4">
+                <h1 class="h3 fw-bold mb-1">
+                    Criar conta
+                </h1>
 
-        <label>Senha:</label>
-        <br>
-        <input type="password" name="password" required>
-        <br><br>
+                <p class="text-muted mb-0">
+                    Cadastre-se para abrir e acompanhar chamados
+                </p>
+            </div>
 
-        <button type="submit">Cadastrar</button>
-    </form>
+            <?php if (!empty($message)): ?>
+                <div class="alert alert-<?= htmlspecialchars($messageType) ?>">
+                    <?= htmlspecialchars($message) ?>
+                </div>
+            <?php endif; ?>
 
-    <br>
+            <form method="POST">
 
-    <a href="login.php">Já tenho conta</a>
+                <div class="mb-3">
+                    <label class="form-label">
+                        Nome
+                    </label>
+
+                    <input
+                        type="text"
+                        name="name"
+                        class="form-control"
+                        placeholder="Digite seu nome"
+                        required
+                    >
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">
+                        Email
+                    </label>
+
+                    <input
+                        type="email"
+                        name="email"
+                        class="form-control"
+                        placeholder="seuemail@exemplo.com"
+                        required
+                    >
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">
+                        Senha
+                    </label>
+
+                    <input
+                        type="password"
+                        name="password"
+                        class="form-control"
+                        placeholder="Crie uma senha"
+                        required
+                    >
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100">
+                    Cadastrar
+                </button>
+
+            </form>
+
+            <div class="text-center mt-4">
+                <span class="text-muted">
+                    Já tem uma conta?
+                </span>
+
+                <a href="login.php" class="text-decoration-none">
+                    Entrar
+                </a>
+            </div>
+
+        </div>
+    </div>
+
+</div>
 
 </body>
 </html>
